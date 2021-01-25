@@ -1,0 +1,1038 @@
+
+TITLE   CS 306 Lab 5 Graphics Routines
+
+.MODEL small
+
+
+COMMENT *
+	A collection of graphics routines for mode 13h.
+
+	All public functions are designed to be callable from
+	C programs.
+	*
+
+
+; Constants
+
+TEXT_MODE   equ 03h
+SCRN_WIDTH  equ 320
+SCRN_HEIGHT equ 200
+SCRN_SIZE   equ SCRN_WIDTH * SCRN_HEIGHT
+
+
+PUBLIC _getVideoMode, _setVideoMode, _clearScreen, _drawHLine
+PUBLIC _drawVLine, _drawBox, _drawFilledBox, _setColor, _getColor
+PUBLIC _saveBlock, _setBlock, _setTransBlock, _checkxdirection, _checkydirection
+PUBLIC _checkxbrickcollision, _checkybrickcollision, _checkmouseposition, _resetmouse
+PUBLIC _GameOverStatus
+
+.DATA
+        scrn_seg dw 0A000h
+        ;scrn_seg dw @fardata
+        scrn_off dw 0
+        ;scrn_off dw offset myscreen
+        temp dw ?
+        savesi dw ?
+        savedi dw ?
+        boxstackx dw 100 dup (?)
+        boxstacky dw 100 dup (?)
+        boxstackclear dw 100 dup (0)
+        vector dw 2 dup (?)
+        stkindex dw 0
+        stksi dw ?
+        overlap dw 0
+        boundxa dw ?
+        boundxb dw ?
+        boundx2a dw ?
+        boundx2b dw ?
+        boxonetlx dw ?
+        boxonetly dw ?
+        boxonebrx dw ?
+        boxonebry dw ?
+        boxtwotlx dw ?
+        boxtwotly dw ? 
+        boxtwobrx dw ?
+        boxtwobry dw ?
+        boxoverlap dw ?
+        hitbottom dw ?
+        savestksi dw ?
+        isinbetween dw ?
+
+        brickcount dw 0
+
+;.FARDATA
+;        myscreen db 64000 dup (0)
+
+.CODE
+
+.386
+
+; unsigned char getVideoMode()
+;   Returns the current video mode.
+
+_getVideoMode PROC
+	mov ah, 0Fh
+	int 10h
+
+	mov ah, 0
+	ret
+_getVideoMode ENDP
+
+
+; void setVideoMode(char mode)
+;   Sets the video mode to the specified value.
+
+_setVideoMode PROC
+	ARG mode:BYTE
+	push bp
+	mov bp, sp
+
+	mov ah, 0
+	mov al, mode
+	int 10h
+
+	pop bp
+	ret
+_setVideoMode ENDP
+
+
+; void clearScreen(char color)
+;   Clear the screen to the specified color.
+
+_clearScreen PROC
+	ARG color:BYTE
+	push bp
+	mov bp, sp
+
+        mov savesi, si
+        mov savedi, di
+
+        mov es, scrn_seg        ; es points to a000:000
+        mov ah, 0
+        mov al, color
+        mov di, 0
+        mov cx, SCRN_SIZE
+        rep stosb
+
+        mov si, savesi
+        mov di, savedi
+        
+	pop bp
+	ret
+_clearScreen ENDP
+
+
+; void drawHLine(int x, int y, int len, int color)
+;   Draw a horizontal line of the specified length and color
+;   starting at (x, y).
+
+_drawHLine PROC
+	ARG x:WORD, y:WORD, len:WORD, color:BYTE
+	push bp
+	mov bp, sp
+        mov savesi, si
+        mov savedi, di
+        mov ax, SCRN_WIDTH        ; calculate di starting point
+        mul y
+        add ax, x
+        mov di, ax                ; save into di
+        mov es, scrn_seg          ; Make es point to video segment
+        mov ah, 0
+        mov al, color
+        mov cx, len
+        rep stosb                 
+
+        mov si, savesi
+        mov di, savedi                
+	pop bp
+	ret
+_drawHLine ENDP
+
+
+; void drawVLine(int x, int y, int len, char color)
+;   Draw a vertical line of the specified length and color
+;   starting at (x, y).
+
+_drawVLine PROC
+	ARG x:WORD, y:WORD, len:WORD, color:BYTE
+	push bp
+	mov bp, sp
+
+        mov savesi, si
+        mov savedi, di
+        mov ax, SCRN_WIDTH
+        mul y
+        add ax, x
+        mov di, ax
+        mov ah, 0
+        mov al, color
+        mov cx, len
+        mov es, scrn_seg
+        mov dx, 0
+  label1:
+        add di, SCRN_WIDTH
+        mov es:[di], al
+        inc dx
+        cmp dx, len
+        jb label1
+
+        mov si, savesi
+        mov di, savedi
+
+	pop bp
+	ret
+_drawVLine ENDP
+
+
+; void drawBox(int x1, int y1, int x2, int y2, char color)
+;   Draw a hollow box of the specified color with upper-left
+;   at (x1, y1) and lower-right at (x2, y2).
+
+_drawBox PROC
+	ARG x1:WORD, y1:WORD, x2:WORD, y2:WORD, color:BYTE
+	push bp
+	mov bp, sp
+                         ; draw top line of box
+        mov al, color
+        mov ah, 0
+        push ax     
+        mov ax, x2
+        sub ax, x1      ;width of box
+        inc ax
+        push ax         ;push length of box on stack
+        push y1         ;
+        push x1
+        call _drawHLine
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+                        ; draw left vertical line of box
+        mov cl, color   
+        mov ch, 0
+        push cx         ; push color
+        mov ax, y2
+        sub ax, y1
+        ;inc ax
+        push ax         ; push length         
+        push y1         ; push y of lower left hand corner of box
+        push x1
+        call _drawVLine
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+
+        mov cl, color
+        mov ch, 0
+        push cx         ; push color
+        mov ax, x2
+        sub ax, x1
+        inc ax
+        push ax         ; push length
+        push y2
+        push x1
+        call _drawHLine
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+        ;fill in this part.
+
+        mov cl, color
+        mov ch, 0
+        push cx         ; push color
+        mov ax, y2
+        sub ax, y1      ;
+        ;inc ax
+        push ax         ; push length
+        push y1
+        push x2
+        call _drawVLine
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+
+	pop bp
+	ret
+_drawBox ENDP
+
+pushBox PROC
+        mov bx, stkindex
+        mov boxstackx[bx], ax
+        mov boxstacky[bx], cx
+        inc brickcount
+        ;mov boxstackclear[bx], 1
+        add stkindex, 2
+        ret
+pushBox ENDP
+
+; void drawFilledBox(int x1, int y1, int x2, int y2, char color)
+;   Draw solid box of the specified color with upper-left at
+;   (x1, y1) and lower-right at (x2, y2).
+
+_drawFilledBox PROC
+	ARG x1:WORD, y1:WORD, x2:WORD, y2:WORD, color:BYTE
+	LOCAL len:WORD =AUTO_SIZE
+	push bp
+	mov bp, sp
+	sub sp, AUTO_SIZE
+
+        mov ax, x1
+        mov cx, y1
+        call pushBox
+
+        mov ax, x2
+        sub ax, x1
+        inc ax
+        
+        mov len, ax
+        mov bx, y2
+        mov temp, bx
+  label2:
+        mov al, color
+        mov ah, 0
+        push ax
+        push len
+        push y1
+        push x1
+        call _drawHLine
+        inc y1
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+        mov ax, y1
+        cmp ax, temp
+        jb label2
+
+	mov sp, bp
+	pop bp
+	ret
+_drawFilledBox ENDP
+
+_ClearBrick PROC
+	ARG x1:WORD, y1:WORD, x2:WORD, y2:WORD, color:BYTE
+	LOCAL len:WORD =AUTO_SIZE
+	push bp
+	mov bp, sp
+	sub sp, AUTO_SIZE        
+
+        mov ax, x2
+        sub ax, x1
+        inc ax
+        
+        mov len, ax
+        mov bx, y2
+        mov temp, bx
+  label2c:
+        mov al, color
+        mov ah, 0
+        push ax
+        push len
+        push y1
+        push x1
+        call _drawHLine
+        inc y1
+        pop bx
+        pop bx
+        pop bx
+        pop bx
+        mov ax, y1
+        cmp ax, temp
+        jb label2c
+
+	mov sp, bp
+	pop bp
+	ret
+_ClearBrick ENDP
+
+
+; void setColor(unsigned char color, unsigned char red,
+;               unsigned char green, unsigned char blue)
+;   Set the specified entry in the color table to the
+;   specified RGB values.
+
+_setColor PROC
+	ARG color:BYTE, red:BYTE, green:BYTE, blue:BYTE
+	push bp
+	mov bp, sp
+
+	mov bh, 0
+	mov bl, color
+
+	mov dh, red
+	mov ch, green
+	mov cl, blue
+
+	mov ah, 10h
+	mov al, 10h
+	int 10h
+
+	pop bp
+	ret
+_setColor ENDP
+
+
+; void getColor(unsigned char color, unsigned char *red,
+;               unsigned char *green, unsigned char *blue)
+;   Read the RGB values of the specified entry in the
+;   color table.
+
+_getColor PROC
+	ARG color:BYTE, red_ptr:WORD, green_ptr:WORD, blue_ptr:WORD
+	push bp
+	mov bp, sp
+
+	mov bh, 0
+	mov bl, color
+
+	mov ah, 10h
+	mov al, 15h
+	int 10h
+
+	mov ah, 0
+
+	mov al, dh
+	mov bx, red_ptr
+	mov word ptr [bx], ax
+
+	mov al, ch
+	mov bx, green_ptr
+	mov word ptr [bx], ax
+
+	mov al, cl
+	mov bx, blue_ptr
+	mov word ptr [bx], ax
+
+	pop bp
+	ret
+_getColor ENDP
+
+
+; void saveBlock(int x, int y, int width, int height, char *buffer)
+;   Save the block from the screen starting at (x, y) of the
+;   specified width and height to the supplied buffer.
+
+_saveBlock PROC
+	ARG x:WORD, y:WORD, width:WORD, height:WORD, buffer:WORD
+        LOCAL leng:WORD =AUTO_SIZE
+	push bp        
+	mov bp, sp
+
+        mov savesi, si
+        mov savedi, di
+        mov ax, SCRN_WIDTH
+        mov bx, width
+        sub ax, bx              ; find length between rows
+        mov leng, ax            ; save into leng
+        mov es, scrn_seg        ; mov a000:00 into es
+        mov ax, SCRN_WIDTH      ; find starting di in video segment
+        mul y                   
+        add ax, x
+        mov di, ax              ; save starting point into di
+        mov si, buffer          ; make si point to the buffer
+        mov cx, 0               ; reset character counter
+        mov dx, 0               ; reset row counter
+  label3:
+        mov al, es:[di]         
+        mov [si], al
+        inc cx          ; increment character counter
+        inc si          ; increment position in buffer
+        inc di          ; increment position in video segment
+        cmp cx, width   ; check to see if you've copied one line
+        jb label3       
+        mov cx, 0       ; reset counter
+        inc dx          ; increment row counter
+        add di, leng    ; increment to next row
+        cmp dx, height
+        jb label3
+        
+        mov si, savesi
+        mov di, savedi
+        
+	pop bp
+	ret
+_saveBlock ENDP
+
+
+; void setBlock(int x, int y, int width, int height, char *buffer)
+;   Copy the block of values from the given buffer to the
+;   specified screen coordinates.
+
+_setBlock PROC
+	ARG x:WORD, y:WORD, width:WORD, height:WORD, buffer:WORD
+        LOCAL lengt:WORD =AUTO_SIZE
+	push bp
+	mov bp, sp
+        call waitForRetrace        
+        mov savesi, si
+        mov savedi, di
+        mov ax, SCRN_WIDTH
+        mov bx, width
+        sub ax, bx        
+        mov lengt, ax           ; save the length between rows
+        mov es, scrn_seg        ; es points to A000:000
+        mov ax, SCRN_WIDTH      ; ax register stores 320  
+        mul y                   ; multiply ax by y
+        add ax, x               ; add x to ax to find di
+        mov di, ax              ; load ax into di       
+        mov si, buffer          ; make si point to the buffer
+        mov cx, width           ; cx is counter for REP command
+        mov dx, 0               ; use dx as a row counter
+        cld
+  label4:                
+        rep movsb               ; copy CX # of terms from ds:[si] to es:[di]
+        mov cx, width           ; RESET the width counter
+        inc dx                  ; increment the row counter
+        add di, lengt           ; move to the next row in video segment
+        cmp dx, height          ; compare to see if # of rows = height
+        jb label4
+        
+        mov si, savesi
+        mov di, savedi
+
+	pop bp
+	ret
+_setBlock ENDP
+
+
+; void setTransBlock(int x, int y, int width, int height, char *buffer,
+;		     unsigned char color)
+;   Copy the block of values from the given buffer to the
+;   specified screen coordinates, without copying the bytes
+;   of the specified color.
+
+_setTransBlock PROC
+	ARG x:WORD, y:WORD, width:WORD, height:WORD, buffer:WORD, color:BYTE
+        LOCAL lengt:WORD =AUTO_SIZE
+	push bp
+	mov bp, sp
+        call waitForRetrace
+        mov savesi, si
+        mov savedi, di
+        mov ax, SCRN_WIDTH
+        mov bx, width
+        sub ax, bx                      ; find the length between rows
+        mov lengt, ax                   ; save it
+        mov es, scrn_seg                ; es points to video segment
+        mov ax, SCRN_WIDTH              ; calculate starting point in es        
+        mul y
+        add ax, x                       
+        mov di, ax                      ; store starting point into di
+        mov si, buffer                  ; make si point to buffer
+        mov cx, 0                       ; reset character counter
+        mov dx, 0                       ; reset row counter
+  label5:
+        mov al, [si]
+        cmp al, color
+        je next
+        mov es:[di], al
+  next:
+        inc cx          ; increment counter
+        inc si          ; increment position in buffer
+        inc di          ; increment position in video segment
+        cmp cx, width   ; check to see if you've copied one line
+        jb label5
+        mov cx, 0       ; reset counter
+        inc dx          ; increment row counter
+        add di, lengt    ; increment to next row
+        cmp dx, height
+        jb label5
+        
+        mov si, savesi
+        mov di, savedi        
+
+	pop bp
+	ret
+_setTransBlock ENDP
+
+_checkxdirection PROC
+        ARG xa:WORD, xb:WORD, currentx:WORD
+	push bp
+	mov bp, sp
+        mov savesi, si
+        mov savedi, di
+        mov ax, xa
+        mov bx, 0
+        add ax, currentx
+        cmp ax, bx
+        jle switch
+        mov ax, xb
+        mov bx, SCRN_WIDTH
+        add ax, currentx
+        cmp ax, bx
+        jge switch
+        mov ax, currentx
+        jmp end
+  switch:
+        mov bx, 4000
+        call beep
+        mov ax, currentx
+        neg ax
+  end:
+        pop bp
+        ret
+_checkxdirection ENDP
+
+_checkydirection PROC
+        ARG ya:WORD, yb:WORD, currenty:WORD
+	push bp
+	mov bp, sp
+        ;push si
+        ;push di
+        mov hitbottom, 0
+        mov ax, ya
+        mov bx, 10
+        add ax, currenty
+        cmp ax, bx
+        jbe yswitch
+        mov ax, yb
+        mov bx, SCRN_HEIGHT
+        add ax, currenty
+        cmp ax, bx
+        jae yswitchhit
+        mov ax, currenty
+        jmp yend
+  yswitchhit:
+        mov bx, 4000
+        call beep
+        mov hitbottom, 1
+        mov ax, currenty
+        neg ax
+        jmp yend
+  yswitch:
+        mov bx, 4000
+        call beep
+        mov hitbottom, 0
+        mov ax, currenty
+        neg ax
+  yend:
+        ;pop di
+        ;pop si
+        pop bp
+        ret
+_checkydirection ENDP
+
+_GameOverStatus PROC
+        ARG paddlex:WORD, paddley:WORD, ballx:WORD, bally:WORD, xinc_ptr:WORD, yinc_ptr:WORD
+        push bp
+        mov bp, sp
+        ;push si
+        ;push di
+        cmp brickcount, 0
+        je userwon
+        cmp hitbottom, 1
+        jb bridge
+        cmp bally, 100
+        jb bridge
+        mov ax, paddlex
+        mov bx, paddley
+        mov boxtwotlx, ax
+        mov boxtwotly, bx
+        add ax, 40
+        mov boxtwobrx, ax
+        mov ax, paddley
+        add ax, 5
+        mov boxtwobry, ax
+        jmp overthebridge
+  bridge:
+        jmp gamegoing
+  overthebridge:        
+        mov ax, ballx
+        mov bx, bally
+        mov boxonetlx, ax
+        mov boxonetly, bx
+        add ax, 8
+        mov boxonebrx, ax
+        mov ax, bally
+        add ax, 8
+        mov boxonebry, ax
+
+        call boverlap
+        cmp boxoverlap, 1
+        je gamestillgoing
+  userloses:
+        mov ax, 1
+        jmp endgos
+  userwon:
+        mov ax, 2
+        jmp endgos
+  gamestillgoing:
+        mov ax, ballx
+        add ax, 4
+        mov bx, paddlex
+        mov cx, paddlex
+        add cx, 10
+        call pointbetween
+        cmp isinbetween, 1
+        jne check2quarter
+        mov ax, -2
+        mov bx, xinc_ptr
+        mov [bx], ax
+        mov ax, -4
+        mov bx, yinc_ptr
+        mov [bx], ax
+        jmp gamegoing
+  check2quarter:     
+        mov ax, ballx
+        add ax, 4
+        mov bx, paddlex
+        add bx, 10
+        mov cx, paddlex
+        add cx, 18
+        call pointbetween
+        cmp isinbetween, 1
+        jne check3quarter
+        mov ax, -2
+        mov bx, xinc_ptr
+        mov [bx], ax
+        mov ax, -6
+        mov bx, yinc_ptr
+        mov [bx], ax
+        jmp gamegoing
+  check3quarter:     
+        mov ax, ballx
+        add ax, 4
+        mov bx, paddlex
+        add bx, 18
+        mov cx, paddlex
+        add cx, 22
+        call pointbetween
+        cmp isinbetween, 1
+        jne check4quarter
+        mov ax, 0
+        mov bx, xinc_ptr
+        mov [bx], ax
+        mov ax, -3
+        mov bx, yinc_ptr
+        mov [bx], ax
+        jmp gamegoing
+  check4quarter:     
+        mov ax, ballx
+        add ax, 4
+        mov bx, paddlex
+        add bx, 22
+        mov cx, paddlex
+        add cx, 30
+        call pointbetween
+        cmp isinbetween, 1
+        jne check5quarter
+        mov ax, 2
+        mov bx, xinc_ptr
+        mov [bx], ax
+        mov ax, -6
+        mov bx, yinc_ptr
+        mov [bx], ax
+        jmp gamegoing
+  check5quarter:     
+        mov ax, ballx
+        add ax, 4
+        mov bx, paddlex
+        add bx, 30
+        mov cx, paddlex
+        add cx, 40
+        call pointbetween
+        cmp isinbetween, 1
+        jne gamegoing
+        mov ax, 2
+        mov bx, xinc_ptr
+        mov [bx], ax
+        mov ax, -4
+        mov bx, yinc_ptr
+        mov [bx], ax
+        jmp gamegoing
+  gamegoing:
+        mov ax, 0
+  endgos:
+        ;pop di
+        ;pop si
+        pop bp
+        ret
+_GameOverStatus ENDP
+
+beep PROC        
+        mov cx, 100
+        in al, 61h
+        or al, 3
+        out 61h, al
+  loop1:
+        mov ax, 34DCH
+        mov dx, 12h
+        div bx
+        out 42h, al
+        mov al, ah
+        out 42h, al
+        sub cx, 1
+        cmp cx, 1
+        jae loop1
+        in al, 61h
+        xor al, 3
+        out 61h, al        
+        ret
+beep ENDP
+
+waits PROC
+        mov dx, 6
+        mov bx, 0
+        add dx, ds:[46ch]
+        adc bx, ds:[46eh]
+   wait1:
+        mov bp, ds:[46ch]
+        mov ax, ds:[46eh]
+        sub bp, dx
+        sbb ax, bx
+        jc wait1
+        ret
+waits ENDP
+
+pointbetween PROC
+        mov isinbetween, 0
+        cmp ax, bx
+        jb notbetween
+        cmp ax, cx
+        ja notbetween
+        mov isinbetween, 1
+  notbetween:
+        ret
+pointbetween ENDP
+
+;user places ax, bx, cx, dx
+;user places boundxa, boundxb, boundx2a, boundx2b
+isbetween PROC
+        mov overlap, 0
+        mov ax, boundxa
+        mov cx, boundx2a
+        cmp ax, cx
+        jbe bnext
+  anext:
+        mov ax, boundxa
+        mov dx, boundx2b
+        cmp ax, dx
+        jae bnext
+        mov overlap, 1
+        jmp endis
+  bnext:
+        mov bx, boundxb
+        mov cx, boundx2a
+        cmp bx, cx
+        jbe endis
+  cnext:
+        mov bx, boundxb
+        mov cx, boundx2b
+        cmp bx, cx
+        jae endis    
+        mov overlap, 1
+  endis:        
+        ret
+isbetween ENDP
+
+boverlap PROC        
+        mov boxoverlap, 0
+        mov ax, boxonetlx
+        mov boundxa, ax
+        mov ax, boxonebrx
+        mov boundxb, ax
+        mov ax, boxtwotlx
+        mov boundx2a, ax
+        mov ax, boxtwobrx
+        mov boundx2b, ax
+        call isbetween
+        cmp overlap, 1
+        jne endoverlap
+        mov ax, boxonetly
+        mov boundxa, ax
+        mov ax, boxonebry
+        mov boundxb, ax
+        mov ax, boxtwotly
+        mov boundx2a, ax
+        mov ax, boxtwobry
+        mov boundx2b, ax
+        call isbetween
+        cmp overlap, 1
+        jne endoverlap
+        mov boxoverlap, 1
+  endoverlap:
+        ret
+boverlap ENDP
+
+clearbrickhit PROC
+        mov ax, 0
+        mov savestksi, bx
+        push ax                 ; push color
+        mov cx, boxstacky[bx]
+        add cx, 10
+        push cx                 ; push y2
+        mov cx, boxstackx[bx]
+        add cx, 30
+        push cx                 ; push x2
+        mov cx, boxstacky[bx]
+        push cx                 ; push y1
+        mov cx, boxstackx[bx]
+        ;mov boxstackclear[bx], 1
+        push cx                 ; push x1
+        call _ClearBrick
+        pop ax
+        pop ax
+        pop ax
+        pop ax
+        pop ax
+        ;mov ax, 1
+        ;mov bx, savestksi
+        ;mov boxstackclear[bx], ax       ;set flag
+        mov bx, savestksi
+        sub brickcount, 1
+        ret
+clearbrickhit ENDP
+
+_checkxbrickcollision PROC
+        ARG xleft:WORD, ytop:WORD, xright:WORD, ybottom:WORD, xincrement:WORD, yincrement:WORD, xinc:WORD, yinc:WORD
+        push bp
+        mov bp, sp
+        push si
+        push di
+        mov ax, 0
+        mov stksi, ax
+        ;add stkindex, 2
+  startcheck:        
+        mov cx, 1                       ; originally mov cx, 1
+        mov bx, stksi                   ;
+        cmp boxstackclear[bx], cx       ; check if boxdeadbit is zero
+        je sts                         ; ****
+        mov ax, xleft           
+        mov bx, xright
+        add ax, xinc      
+        add bx, xinc
+        mov boxonetlx, ax       ; load the top left x coordinate
+        mov boxonebrx, bx       ; load the bottom right x coordinate
+        mov ax, ytop
+        mov bx, ybottom
+        add ax, yinc
+        add bx, yinc
+        mov boxonetly, ax       ; load the top left y coordinate
+        mov boxonebry, bx       ; load the bottom right coordinate
+        mov bx, stksi
+        mov ax, boxstackx[bx]
+        mov cx, boxstacky[bx]
+        mov boxtwotlx, ax       ; load the top left x coordinate of brick
+        mov boxtwotly, cx       ; load the top left y coordinate of brick
+        add ax, 30              
+        add cx, 10
+        mov boxtwobrx, ax       ; load the bottom right x coordinate of brick
+        mov boxtwobry, cx       ; load the bottom right y coordinate of brick
+        call boverlap           ; Check for boxoverlap
+        cmp boxoverlap, 1       ; check boxoverlap flag
+        je checkdeflectx        ; if there is overlap jump
+  sts:
+        add stksi, 2            ; if no overlap, check for collision with next box
+        mov ax, stksi        
+        cmp ax, stkindex             ; originally 64
+        jb startcheck           ; if not keep looping through the boxes
+        jmp estly               ; otherwise no overlap at all and finish
+  checkdeflectx:
+        mov bx, 1400
+        call beep
+        mov bx, stksi
+        mov boxstackclear[bx], 1  ; originally mov boxstackclear[bx], 1
+        call clearbrickhit      ; ****
+        mov ax, xleft           ; check for INITIAL x-overlap
+        mov boundxa, ax         ; load left x coordinate of ball
+        mov ax, xright
+        mov boundxb, ax         ; load right x coordinate of ball
+        mov bx, stksi
+        mov cx, boxstackx[bx]   ; load left x coordinate of brick
+        mov boundx2a, cx
+        add cx, 30
+        mov boundx2b, cx        ; load right x coordinate of brick
+        call isbetween          ; check for overlap
+        cmp overlap, 1
+        je checkdeflecty       ; If NO INITIAL overlap (but
+        mov bx, xincrement
+        mov ax, [bx]
+        neg ax
+        mov [bx], ax
+        mov xincrement, bx
+  checkdeflecty:
+        mov bx, stksi
+        mov ax, ytop           ; check for INITIAL y-overlap
+        mov boundxa, ax        ; load left y coordinate of ball
+        mov ax, ybottom
+        mov boundxb, ax        ; load right y coordinate of ball
+        mov bx, stksi
+        mov cx, boxstacky[bx]  ; load left y coordinate of brick
+        mov boundx2a, cx
+        add cx, 10
+        mov boundx2b, cx       ; load right y coordinate of brick
+        call isbetween         ; check for overlap
+        cmp overlap, 1
+        je estly               ; If NO INITIAL overlap (but
+        mov bx, yincrement     ; next movement causes overlap)
+        mov ax, [bx]
+        neg ax                 ; deflect y otherwise don't deflect
+        mov [bx], ax
+        mov yincrement, bx
+   estly:
+        pop di
+        pop si
+        pop bp
+        ret        
+_checkxbrickcollision ENDP
+
+_checkmouseposition PROC
+        push bp
+        mov bp, sp
+        push si
+        push di
+        mov ax, 3
+        int 33h
+        mov ax, cx
+        pop di
+        pop si
+        pop bp
+        ret
+_checkmouseposition ENDP
+
+_resetmouse PROC
+        push bp
+        mov bp, sp
+        push si
+        push di
+        mov ax, 0
+        int 33h
+        mov cx, 0
+        mov dx, 560
+        mov al, 07h
+        mov ah, 00h
+        int 33h
+        pop di
+        pop si
+        pop bp
+        ret
+_resetmouse ENDP
+
+
+_checkybrickcollision PROC
+        ARG xleft:WORD, ytop:WORD, xright:WORD, ybottom:WORD, xincrement:WORD, yincrement:WORD
+        push bp
+        mov bp, sp
+        push si
+        push di
+        pop di
+        pop si
+        pop bp
+        ret
+_checkybrickcollision ENDP
+
+
+waitForRetrace PROC
+        mov dx, 3DAh
+        wfr:
+        in al, dx
+        test al, 8
+        jnz wfr
+        ret
+waitForRetrace ENDP
+      
+
+END

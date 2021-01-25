@@ -1,0 +1,30 @@
+MAKE Version 3.6  Copyright (c) 1992 Borland International
+
+Available memory 30814208 bytes
+
+        bcc -v gtest.cpp mode13h.asm
+Borland C++  Version 3.1 Copyright (c) 1992 Borland International
+gtest.cpp:
+Warning gtest.cpp 83: Temporary used for parameter 'xincrement' in call to 'checkxbrickcollision(int,int,int,int,int &,int &)' in function main(int,char * *)
+Error gtest.cpp 83: Cannot convert 'int *' to 'int' in function main(int,char * *)
+Error gtest.cpp 83: Type mismatch in parameter 'xincrement' in call to 'checkxbrickcollision(int,int,int,int,int &,int &)' in function main(int,char * *)
+Warning gtest.cpp 83: Temporary used for parameter 'yincrement' in call to 'checkxbrickcollision(int,int,int,int,int &,int &)' in function main(int,char * *)
+Error gtest.cpp 83: Cannot convert 'int *' to 'int' in function main(int,char * *)
+Error gtest.cpp 83: Type mismatch in parameter 'yincrement' in call to 'checkxbrickcollision(int,int,int,int,int &,int &)' in function main(int,char * *)
+Warning gtest.cpp 107: 'c' is assigned a value that is never used in function main(int,char * *)
+Warning gtest.cpp 107: Parameter 'argc' is never used in function main(int,char * *)
+Warning gtest.cpp 107: Parameter 'argv' is never used in function main(int,char * *)
+*** 4 errors in Compile ***
+mode13h.asm:
+Turbo Assembler  Version 3.1  Copyright (c) 1988, 1992 Borland International
+
+Assembling file:   mode13h.ASM
+Error messages:    None
+Warning messages:  None
+Passes:            1
+Remaining memory:  384k
+
+
+        Available memory 4119800
+
+** error 1 ** deleting gtest.exe
